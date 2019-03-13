@@ -1,0 +1,331 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Feb 16 11:20:52 2019
+
+@author: jonat
+"""
+import math
+import random as rd
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.datasets import load_iris
+from sklearn import preprocessing
+from sklearn.model_selection import train_test_split
+
+class CompleteNet():
+    def __init__(self, numLayers, numNodes, inputs):
+        self.learningRate = .2
+        self.numLayers = numLayers
+        self.numNodes = numNodes
+        self.inputs = inputs
+        self.layers = []
+        tempInputs = self.inputs
+        for i in range(self.numLayers):
+            self.layers.append(Net(tempInputs, self.numNodes[i]))
+            tempInputs = self.layers[i].outputs[:]
+            
+    def output(self):
+        return self.layers[self.numLayers - 1].output()
+    
+    def outputRegression(self):
+        return self.layers[self.numLayers - 1].outputRegression()
+    
+    def fit(self, inputs):
+        self.inputs = inputs.tolist()[:]
+        self.inputs.insert(0, -1)
+        tempInput = self.inputs[:]
+        for i in range(self.numLayers):
+            self.layers[i].inputs = tempInput[:]
+            tempInput = self.layers[i].output()[:]
+            tempInput.insert(0, -1)
+        self.output()
+        
+    # Set all the saved updated weights to the actual weights
+    def updateWeights(self):
+        for i in range(len(self.layers)):
+            for j in range(len(self.layers[i].weights)):
+                for k in range(len(self.layers[i].weights[j])):
+                    self.layers[i].weights[j][k] = self.layers[i].updatedWeights[j][k]
+    
+    # Save the updated weights.
+    def saveUpdatedWeights(self, delta, index):
+        #i is the output node
+        for i in range(len(self.layers[index].weights)):
+            #inputIndex = 0
+            self.layers[index].updatedWeights[i] = [(j - self.learningRate * delta[i] * self.layers[index].inputs[k]) for j, k in zip(self.layers[index].weights[i], range(len(self.layers[index].weights[i])))]   
+            
+            
+    def backProp(self, expected):
+        index = 0
+        delta = []
+        for i in self.output():
+            delta.append( i * (1 - i) * (i - expected[index]) )
+            index = index + 1
+        self.saveUpdatedWeights(delta, -1)
+        
+        oldDelta = delta[:]
+        # Staring from the second to last layer working our way to the first
+        for i in range(self.numLayers - 2, -1, -1):
+            newDelta = []
+            index1 = 0
+            for j in self.layers[i].outputs:
+                sum1 = 0
+                for k, l in zip(oldDelta, range(len(self.layers[i + 1].weights))):
+                    #weights[output nodes][inputs nodes]
+                    sum1 = sum1 + (self.layers[i + 1].weights[l][index1 + 1] * k)
+                newDelta.append(j * (1 - j) * sum1)
+                index1 = index1 + 1
+            self.saveUpdatedWeights(newDelta, i)            
+            oldDelta = newDelta[:]
+        self.updateWeights()
+    
+            
+    def displayWeights(self):
+        print("New net")
+        for i in self.layers:
+            print("Inputs:")
+            print(i.inputs)
+            print("weights[nodes][input]:")
+            print(i.weights)
+            print("Added weights to be summed:")
+            print(i.averageUpdatedWeights)
+            print("outputs:")
+            print(i.outputs)
+            
+        
+    def predict(self, inputs):
+        self.fit(inputs)
+        index = 0
+        largestIndex = 0
+        maxVal = 0
+        for i in self.output():
+            if i > maxVal:
+                maxVal = i
+                largestIndex = index
+            index = index + 1
+        return largestIndex
+    
+    def predictRegression(self, inputs):
+        self.fit(inputs)
+        
+        return self.output()[0]
+    
+    def train(self, inputs, expected):
+        self.fit(inputs)
+        expected2 = []
+        for i in range(len(self.output())):
+            if i == expected:
+                expected2.append(1)
+            else:
+                expected2.append(0)
+        self.backProp(expected2)
+    
+    def trainSingle(self, inputs, expected):
+        self.fit(inputs)
+        expected2 = []
+        expected2.append(expected)
+        self.backProp(expected2)
+        
+    def trainRegression(self, inputs, expected):
+        self.fit(inputs)
+        expected2 = []
+        expected2.append(1 / (1 + math.exp(-expected)))
+        self.backProp(expected2)
+
+class Net():
+    def __init__(self, inputs, nodes):
+        self.inputs = inputs[:]
+        self.inputs.insert(0, -1)
+        self.weights = []
+        self.updatedWeights = []
+        self.outputs = []
+        for i in range(nodes):
+            temp = []
+            temp2 = []
+            for j in self.inputs:
+                #weights to each input
+                temp.append(rd.uniform(-1, 1))
+                temp2.append(0)
+            #append the nodes and its weights.
+            self.weights.append(temp)
+            self.updatedWeights.append(temp2)
+
+                
+        self.output()
+    def output(self):
+        sums = []
+        sums = np.dot(self.weights, self.inputs)
+        sums = [1 / (1 + math.exp(-sum1)) for sum1 in sums]
+        
+        self.outputs = sums
+        return self.outputs
+    
+    def outputRegression(self):
+        sums = []
+        sums = np.dot(self.weights, self.inputs)
+        self.outputs = sums
+        return self.outputs
+            
+def main():
+    iris = load_iris()
+    iris.data = preprocessing.normalize(iris.data)
+    test_size = .20
+    X_train, X_test, Y_train, Y_test = train_test_split(iris.data,
+                                                        iris.target,
+                                                        test_size=test_size)
+    numLayers = 3
+    numNodes = []
+    for i in range(numLayers - 1):
+        numNodes.append(rd.randint(2, 5))
+        
+    numNodes.append(len(set(Y_train)))   
+    completeNet = CompleteNet(numLayers, numNodes, X_train[0].tolist())
+    # For batch training
+    percentages = []
+    for i in range(1):
+        for j, k in zip(X_train, Y_train):
+            completeNet.train(j, k) 
+            count = 0
+            sumCorrect = 0
+            for i, j in zip(X_test, Y_test):
+                val = completeNet.predict(i)
+                count = count + 1
+                sumCorrect = sumCorrect + (val == j)
+        
+            percentages.append(100 * (sumCorrect / count))
+    plt.plot(percentages)
+    plt.ylabel('Percent Accuracy')
+    plt.title('Iris / Classification')
+    plt.xlabel('Number of trainings')
+    plt.show()    
+    count = 0
+    sumCorrect = 0
+    for i, j in zip(X_test, Y_test):
+        val = completeNet.predict(i)
+        count = count + 1
+        sumCorrect = sumCorrect + (val == j)        
+    print(100 * (sumCorrect / count))
+
+
+    Cardata = pd.read_csv("CarData.csv", delimiter=',', na_values='?',
+                      names=['buying', 'maint', 'doors', 'persons', 'lug_boot',
+                             'safety', 'class'])
+    #Cardata['doors'] = Cardata['doors'].replace('5more', 5)
+    #Cardata['persons'] = Cardata['persons'].replace('more', 5)
+    
+    doorVals = {'2': 2, '3': 3, '4': 4, '5more': 5, 'more': 5 }
+
+    buyingVals = {'vhigh': 1, 'high': 2, 'med': 3, 'low': 4 }
+    lugs = {'small': 1, 'med': 2, 'big': 3 }
+    safety = {'low': 1, 'med': 2, 'high': 3 }
+    classVal = {'unacc': 0, 'acc': 1, 'good': 2, 'vgood': 3}
+    #classes = {'unacc': 1, 'acc': 2, 'good': 3, 'vgood': 4 }
+    
+    Cardata['doors'] = [doorVals[item] for item in Cardata['doors']] 
+    Cardata['persons'] = [doorVals[item] for item in Cardata['persons']] 
+    Cardata['buying'] = [buyingVals[item] for item in Cardata['buying']] 
+    Cardata['maint'] = [buyingVals[item] for item in Cardata['maint']]
+    Cardata['lug_boot'] = [lugs[item] for item in Cardata['lug_boot']]
+    Cardata['safety'] = [safety[item] for item in Cardata['safety']]
+    Cardata['class'] = [classVal[item] for item in Cardata['class']]
+    #Cardata['class'] = [classes[item] for item in Cardata['class']]
+    Cardata = Cardata.fillna(Cardata.mean())
+    #npCardata = preprocessing.normalize(Cardata.values)
+    npCardata = Cardata.values
+    rd.shuffle(npCardata)
+    carX_train, carX_test, carY_train, carY_test = train_test_split(np.delete(npCardata, -1, 1), npCardata[:,-1],
+                                                        test_size=test_size)
+    
+    numLayersCars = 3
+    numNodesCars = []
+    for i in range(numLayersCars - 1):
+        numNodesCars.append(rd.randint(2, 5))
+
+    
+    numNodesCars.append(len(set(carY_train)))  
+    print(len(set(carY_train)))
+    completeNet2 = CompleteNet(numLayersCars, numNodesCars, carX_train[0].tolist())
+
+    carPercentages = []
+    for i in range(0):
+        for j, k in zip(carX_train, carY_train):
+            completeNet2.train(j, k) 
+            count2 = 0
+            sumCorrect2 = 0
+            for i, j in zip(carX_test, carY_test):
+                val2 = completeNet2.predict(i)
+                
+                #print(j)
+                count2 = count2 + 1
+                sumCorrect2 = sumCorrect2 + (val2 == j)
+            carPercentages.append(100 * (sumCorrect2 / count2))
+    plt.plot(carPercentages)
+    plt.ylabel('Percent Accuracy')
+    plt.title('Car Data / Classification')
+    plt.xlabel('Number of trainings')
+    plt.show()
+            
+    count2 = 0
+    sumCorrect2 = 0
+    for i, j in zip(carX_test, carY_test):
+        val2 = completeNet2.predict(i)
+        count2 = count2 + 1
+        sumCorrect2 = sumCorrect2 + (val2 == j)
+        
+    print(100 * (sumCorrect2 / count2))
+    
+    Autodata = pd.read_csv("AutoData.csv", skipinitialspace=True,
+                           na_values='?', delim_whitespace=True, header=None,
+                           names=['mpg', 'cylinders',
+                                  'displacement', 'horsepower',
+                                  'weight', 'acceleration', 
+                                  'model year', 'original', 
+                                  'car name'])
+
+    Autodata = Autodata.fillna(Autodata.mean())
+    npAutodata = Autodata.values
+    npAutodata = np.delete(npAutodata, -1, 1)
+    scaler = preprocessing.MinMaxScaler(copy=True, feature_range=(0, 1))
+    scaler.fit(npAutodata)
+    npAutodata = scaler.transform(npAutodata)
+    #npAutodata = preprocessing.normalize(npAutodata)
+
+    autoX_train, autoX_test, autoY_train, autoY_test = train_test_split(np.delete(npAutodata, 0, 1), npAutodata[:,0],
+                                                        test_size=test_size)
+
+    numLayersAuto = 3
+    numNodesAuto = []
+    for i in range(numLayersAuto - 1):
+        numNodesAuto.append(rd.randint(2, 5))
+
+    
+    numNodesAuto.append(1)   
+    completeNetAuto = CompleteNet(numLayersAuto, numNodesAuto, autoX_train[0].tolist())
+    totals = []
+    for i in range(500):
+        for j, k in zip(autoX_train, autoY_train):
+            completeNetAuto.trainSingle(j, k) 
+            total = 0
+        for i, j in zip(autoX_test, autoY_test):
+            val3 = completeNetAuto.predictRegression(i)
+            total = total + (1 - abs(val3 - j))
+        totals.append(100 * (total / len(autoX_test)))
+        
+    plt.plot(totals)
+    plt.ylabel('Percent Accuracy')
+    plt.xlabel('Number of trainings through the test set')
+    plt.title('Automobile Mileage / Regression')
+    plt.show()
+    
+    total = 0
+    for i, j in zip(autoX_test, autoY_test):
+        val3 = completeNetAuto.predictRegression(i)
+        total = total + (1 - abs(val3 - j))
+        
+    print("Percent of regression:")
+    print(100 * (total / len(autoX_test)))
+        
+    
+if __name__ == '__main__':
+    main()
